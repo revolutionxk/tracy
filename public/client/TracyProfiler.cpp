@@ -4993,6 +4993,8 @@ TRACY_API void ___tracy_emit_frame_mark( const char* name ) { tracy::Profiler::S
 TRACY_API void ___tracy_emit_frame_mark_start( const char* name ) { tracy::Profiler::SendFrameMark( name, tracy::QueueType::FrameMarkMsgStart ); }
 TRACY_API void ___tracy_emit_frame_mark_end( const char* name ) { tracy::Profiler::SendFrameMark( name, tracy::QueueType::FrameMarkMsgEnd ); }
 TRACY_API void ___tracy_emit_frame_image( const void* image, uint16_t w, uint16_t h, uint8_t offset, int32_t flip ) { tracy::Profiler::SendFrameImage( image, w, h, offset, flip != 0 ); }
+TRACY_API uint64_t ___tracy_frame_count( void ) { return tracy::Profiler::FrameCount(); }
+TRACY_API void ___tracy_emit_frame_image_at( const void* image, uint16_t w, uint16_t h, uint64_t frame, int32_t flip ) { tracy::Profiler::SendFrameImageAt( image, w, h, frame, flip != 0 ); }
 TRACY_API void ___tracy_emit_plot( const char* name, double val ) { tracy::Profiler::PlotData( name, val ); }
 TRACY_API void ___tracy_emit_plot_float( const char* name, float val ) { tracy::Profiler::PlotData( name, val ); }
 TRACY_API void ___tracy_emit_plot_int( const char* name, int64_t val ) { tracy::Profiler::PlotData( name, val ); }

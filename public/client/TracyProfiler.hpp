@@ -435,6 +435,41 @@ public:
 #endif
     }
 
+    static tracy_force_inline uint64_t FrameCount()
+    {
+        return GetProfiler().m_frameCount.load( std::memory_order_relaxed );
+    }
+
+    static tracy_force_inline void SendFrameImageAt( const void* image, uint16_t w, uint16_t h, uint64_t frame, bool flip )
+    {
+#ifndef TRACY_NO_FRAME_IMAGE
+        auto& profiler = GetProfiler();
+        TRACY_ASSERT( profiler.m_frameCount.load( std::memory_order_relaxed ) < (std::numeric_limits<uint32_t>::max)() );
+#  ifdef TRACY_ON_DEMAND
+        if( !profiler.IsConnected() ) return;
+#  endif
+        const auto sz = size_t( w ) * size_t( h ) * 4;
+        auto ptr = (char*)tracy_malloc( sz );
+        memcpy( ptr, image, sz );
+
+        profiler.m_fiLock.lock();
+        auto fi = profiler.m_fiQueue.prepare_next();
+        fi->image = ptr;
+        fi->frame = uint32_t( frame );
+        fi->w = w;
+        fi->h = h;
+        fi->flip = flip;
+        profiler.m_fiQueue.commit_next();
+        profiler.m_fiLock.unlock();
+#else
+        static_cast<void>(image);
+        static_cast<void>(w);
+        static_cast<void>(h);
+        static_cast<void>(frame);
+        static_cast<void>(flip);
+#endif
+    }
+
     static tracy_force_inline void PlotData( const char* name, int64_t val )
     {
 #ifdef TRACY_ON_DEMAND

@@ -345,6 +345,8 @@ TRACY_API void ___tracy_emit_frame_mark( const char* name );
 TRACY_API void ___tracy_emit_frame_mark_start( const char* name );
 TRACY_API void ___tracy_emit_frame_mark_end( const char* name );
 TRACY_API void ___tracy_emit_frame_image( const void* image, uint16_t w, uint16_t h, uint8_t offset, int32_t flip );
+TRACY_API uint64_t ___tracy_frame_count( void );
+TRACY_API void ___tracy_emit_frame_image_at( const void* image, uint16_t w, uint16_t h, uint64_t frame, int32_t flip );
 
 #define TracyCFrameMark ___tracy_emit_frame_mark( 0 );
 #define TracyCFrameMarkNamed( name ) ___tracy_emit_frame_mark( name );

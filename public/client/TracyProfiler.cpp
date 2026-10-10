@@ -5200,7 +5200,7 @@ TRACY_API void ___tracy_emit_gpu_zone_begin_callstack_serial( const struct ___tr
 
 TRACY_API void ___tracy_emit_gpu_zone_begin_frames_serial( const struct ___tracy_gpu_zone_begin_data data, const uint64_t* frames, int32_t depth )
 {
-    if( depth <= 0 || !frames )
+    if( depth <= 0 || !frames || !tracy::has_callstack() )
     {
         ___tracy_emit_gpu_zone_begin_serial( data );
         return;

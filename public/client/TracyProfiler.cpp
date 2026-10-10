@@ -4977,6 +4977,15 @@ TRACY_API void ___tracy_emit_memory_alloc_callstack_named( const void* ptr, size
         tracy::Profiler::MemAllocNamed( ptr, size, name );
     }
 }
+TRACY_API void ___tracy_emit_memory_alloc_frames_named( const void* ptr, size_t size, const uint64_t* frames, int32_t depth, const char* name )
+{
+    if( depth <= 0 || !frames || !tracy::has_callstack() )
+    {
+        ___tracy_emit_memory_alloc_named( ptr, size, name );
+        return;
+    }
+    tracy::Profiler::MemAllocFramesNamed( ptr, size, frames, depth, name );
+}
 TRACY_API void ___tracy_emit_memory_free_named( const void* ptr, const char* name ) { tracy::Profiler::MemFreeNamed( ptr, name ); }
 TRACY_API void ___tracy_emit_memory_free_callstack_named( const void* ptr, int32_t depth, const char* name )
 {

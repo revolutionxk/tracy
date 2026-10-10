@@ -741,6 +741,26 @@ public:
         }
     }
 
+    static tracy_force_inline void MemAllocFramesNamed( const void* ptr, size_t size, const uint64_t* frames, int32_t depth, const char* name )
+    {
+        if( !ProfilerAvailable() ) return;
+        auto& profiler = GetProfiler();
+#  ifdef TRACY_ON_DEMAND
+        if( !profiler.IsConnected() ) return;
+#  endif
+        const auto thread = GetThreadHandle();
+
+        auto callstack = (uint64_t*)tracy_malloc( ( 1 + (size_t)depth ) * sizeof( uint64_t ) );
+        callstack[0] = (uint64_t)depth;
+        memcpy( callstack + 1, frames, (size_t)depth * sizeof( uint64_t ) );
+
+        profiler.m_serialLock.lock();
+        SendCallstackSerial( callstack );
+        SendMemName( name );
+        SendMemAlloc( QueueType::MemAllocCallstackNamed, thread, ptr, size );
+        profiler.m_serialLock.unlock();
+    }
+
     static tracy_force_inline void MemFreeCallstackNamed( const void* ptr, int32_t depth, const char* name )
     {
         if( !ProfilerAvailable() ) return;

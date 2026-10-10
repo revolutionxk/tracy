@@ -99,6 +99,7 @@ typedef const void* TracyCSharedLockCtx;
 
 #define TracyCAllocNS(x,y,z,w)
 #define TracyCFreeNS(x,y,z)
+#define ___tracy_emit_memory_alloc_frames_named(x,y,z,w,a)
 
 #define TracyCMessageS(x,y,z)
 #define TracyCMessageLS(x,y)
@@ -322,6 +323,7 @@ TRACY_API void ___tracy_emit_memory_alloc_named( const void* ptr, size_t size, c
 TRACY_API void ___tracy_emit_memory_alloc_callstack_named( const void* ptr, size_t size, int32_t depth, const char* name );
 TRACY_API void ___tracy_emit_memory_free_named( const void* ptr, const char* name );
 TRACY_API void ___tracy_emit_memory_free_callstack_named( const void* ptr, int32_t depth, const char* name );
+TRACY_API void ___tracy_emit_memory_alloc_frames_named( const void* ptr, size_t size, const uint64_t* frames, int32_t depth, const char* name );
 TRACY_API void ___tracy_emit_memory_discard( const char* name );
 TRACY_API void ___tracy_emit_memory_discard_callstack( const char* name, int32_t depth );
 

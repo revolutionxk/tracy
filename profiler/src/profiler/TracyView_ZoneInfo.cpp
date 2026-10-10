@@ -310,6 +310,20 @@ void View::DrawZoneInfoWindow()
             {
                 ImGui::PopStyleColor( 3 );
             }
+            const auto& frames = m_worker.GetCallstack( extra.callstack.Val() );
+            const auto frame = frames.empty() ? nullptr : m_worker.GetCallstackFrame( frames[0] );
+            if( frame && frame->size > 0 )
+            {
+                const auto symAddr = frame->data[frame->size - 1].symAddr;
+                if( symAddr != 0 && m_worker.HasSymbolCode( symAddr ) )
+                {
+                    ImGui::SameLine();
+                    if( ImGui::Button( ICON_FA_MICROCHIP " Assembly" ) )
+                    {
+                        ViewSymbol( nullptr, 0, symAddr, m_worker.GetCanonicalPointer( frames[0] ) );
+                    }
+                }
+            }
         }
         const auto fileName = m_worker.GetString( srcloc.file );
         if( SourceFileValid( fileName, m_worker.GetCaptureTime(), *this, m_worker ) )

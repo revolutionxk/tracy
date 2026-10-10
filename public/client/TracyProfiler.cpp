@@ -5198,6 +5198,29 @@ TRACY_API void ___tracy_emit_gpu_zone_begin_callstack_serial( const struct ___tr
     tracy::Profiler::QueueSerialFinish();
 }
 
+TRACY_API void ___tracy_emit_gpu_zone_begin_frames_serial( const struct ___tracy_gpu_zone_begin_data data, const uint64_t* frames, int32_t depth )
+{
+    if( depth <= 0 || !frames )
+    {
+        ___tracy_emit_gpu_zone_begin_serial( data );
+        return;
+    }
+#ifdef TRACY_ON_DEMAND
+    if( !tracy::GetProfiler().IsConnected() ) return;
+#endif
+    auto trace = (uint64_t*)tracy::tracy_malloc( ( 1 + (size_t)depth ) * sizeof( uint64_t ) );
+    trace[0] = (uint64_t)depth;
+    memcpy( trace + 1, frames, (size_t)depth * sizeof( uint64_t ) );
+    auto item = tracy::Profiler::QueueSerialCallstack( trace );
+    tracy::MemWrite( &item->hdr.type, tracy::QueueType::GpuZoneBeginCallstackSerial );
+    tracy::MemWrite( &item->gpuZoneBegin.cpuTime, tracy::Profiler::GetTime() );
+    tracy::MemWrite( &item->gpuZoneBegin.srcloc, data.srcloc );
+    tracy::MemWrite( &item->gpuZoneBegin.thread, tracy::GetThreadHandle() );
+    tracy::MemWrite( &item->gpuZoneBegin.queryId, data.queryId );
+    tracy::MemWrite( &item->gpuZoneBegin.context, data.context );
+    tracy::Profiler::QueueSerialFinish();
+}
+
 TRACY_API void ___tracy_emit_gpu_zone_begin_alloc_serial( const struct ___tracy_gpu_zone_begin_data data )
 {
 #ifdef TRACY_ON_DEMAND

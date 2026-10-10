@@ -37,6 +37,8 @@
 #  include <lwp.h>
 #elif defined __DragonFly__
 #  include <sys/lwp.h>
+#elif defined __APPLE__
+#  include <mach/mach.h>
 #elif defined __QNX__
 #  include <process.h>
 #  include <sys/neutrino.h>
@@ -302,6 +304,34 @@ TRACY_API const char* GetThreadName( uint32_t id )
    pthread_setcancelstate( cs, 0 );
 # endif
   return buf;
+#elif defined __APPLE__
+    thread_act_array_t threads;
+    mach_msg_type_number_t threadCount;
+    bool found = false;
+    if( task_threads( mach_task_self(), &threads, &threadCount ) == KERN_SUCCESS )
+    {
+        for( mach_msg_type_number_t i = 0; i < threadCount; i++ )
+        {
+            if( !found )
+            {
+                thread_identifier_info_data_t identifier;
+                mach_msg_type_number_t identifierCount = THREAD_IDENTIFIER_INFO_COUNT;
+                if( thread_info( threads[i], THREAD_IDENTIFIER_INFO, (thread_info_t)&identifier, &identifierCount ) == KERN_SUCCESS && uint32_t( identifier.thread_id ) == id )
+                {
+                    thread_extended_info_data_t extended;
+                    mach_msg_type_number_t extendedCount = THREAD_EXTENDED_INFO_COUNT;
+                    if( thread_info( threads[i], THREAD_EXTENDED_INFO, (thread_info_t)&extended, &extendedCount ) == KERN_SUCCESS && extended.pth_name[0] != '\0' )
+                    {
+                        snprintf( buf, sizeof( buf ), "%s", extended.pth_name );
+                        found = true;
+                    }
+                }
+            }
+            mach_port_deallocate( mach_task_self(), threads[i] );
+        }
+        vm_deallocate( mach_task_self(), (vm_address_t)threads, sizeof( thread_t ) * threadCount );
+    }
+    if( found ) return buf;
 #elif defined __QNX__
     static char qnxNameBuf[_NTO_THREAD_NAME_MAX + 1] = {0};
     if (pthread_getname_np(static_cast<int>(id), qnxNameBuf, _NTO_THREAD_NAME_MAX) == 0) {

@@ -4642,6 +4642,47 @@ TRACY_API TracyCZoneCtx ___tracy_emit_zone_begin_callstack( const struct ___trac
     return ctx;
 }
 
+TRACY_API TracyCZoneCtx ___tracy_emit_zone_begin_frames( const struct ___tracy_source_location_data* srcloc, const uint64_t* frames, int32_t depth, int32_t active )
+{
+    ___tracy_c_zone_context ctx;
+#ifdef TRACY_ON_DEMAND
+    ctx.active = active && tracy::GetProfiler().IsConnected();
+#else
+    ctx.active = active;
+#endif
+    if( !ctx.active ) return ctx;
+#ifdef TRACY_ON_DEMAND
+    ctx.connectionId = tracy::GetProfiler().ConnectionId();
+#endif
+    const auto id = tracy::GetProfiler().GetNextZoneId();
+    ctx.id = id;
+
+#ifndef TRACY_NO_VERIFY
+    {
+        TracyQueuePrepareC( tracy::QueueType::ZoneValidation );
+        tracy::MemWrite( &item->zoneValidation.id, id );
+        TracyQueueCommitC( zoneValidationThread );
+    }
+#endif
+    auto zoneQueue = tracy::QueueType::ZoneBegin;
+    if( depth > 0 && frames )
+    {
+        auto trace = (uint64_t*)tracy::tracy_malloc( ( 1 + (size_t)depth ) * sizeof( uint64_t ) );
+        trace[0] = (uint64_t)depth;
+        memcpy( trace + 1, frames, (size_t)depth * sizeof( uint64_t ) );
+        TracyQueuePrepareC( tracy::QueueType::Callstack );
+        tracy::MemWrite( &item->callstackFat.ptr, (uint64_t)trace );
+        TracyQueueCommitC( callstackFatThread );
+        zoneQueue = tracy::QueueType::ZoneBeginCallstack;
+    }
+    TracyQueuePrepareC( zoneQueue );
+    tracy::MemWrite( &item->zoneBegin.time, tracy::Profiler::GetTime() );
+    tracy::MemWrite( &item->zoneBegin.srcloc, (uint64_t)srcloc );
+    TracyQueueCommitC( zoneBeginThread );
+
+    return ctx;
+}
+
 TRACY_API TracyCZoneCtx ___tracy_emit_zone_begin_alloc( uint64_t srcloc, int32_t active )
 {
     ___tracy_c_zone_context ctx;

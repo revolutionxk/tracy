@@ -227,6 +227,23 @@ typedef /*const*/ struct ___tracy_c_zone_context TracyCZoneCtx;
 typedef struct __tracy_lockable_context_data* TracyCLockCtx;
 typedef struct __tracy_shared_lockable_context_data* TracyCSharedLockCtx;
 
+struct ___tracy_resolved_symbol
+{
+    const char* name;
+    const char* image;
+    const char* file;
+    uint32_t line;
+    uint32_t size;
+    uint64_t address;
+};
+
+typedef int32_t (*___tracy_symbol_resolver)( uint64_t address, struct ___tracy_resolved_symbol* symbol, void* user );
+typedef int32_t (*___tracy_sample_hook)( uint32_t thread, uint64_t* frames, int32_t depth, int32_t capacity, uint64_t link, void* user );
+
+TRACY_API void ___tracy_set_symbol_resolver( ___tracy_symbol_resolver resolver, void* user );
+TRACY_API void ___tracy_set_sample_hook( ___tracy_sample_hook hook, void* user );
+TRACY_API void ___tracy_set_sampling_frequency( int32_t hz );
+
 #ifdef TRACY_MANUAL_LIFETIME
 TRACY_API void ___tracy_startup_profiler(void);
 TRACY_API void ___tracy_shutdown_profiler(void);
@@ -244,6 +261,7 @@ TRACY_API TracyCZoneCtx ___tracy_emit_zone_begin( const struct ___tracy_source_l
 TRACY_API TracyCZoneCtx ___tracy_emit_zone_begin_callstack( const struct ___tracy_source_location_data* srcloc, int32_t depth, int32_t active );
 TRACY_API TracyCZoneCtx ___tracy_emit_zone_begin_alloc( uint64_t srcloc, int32_t active );
 TRACY_API TracyCZoneCtx ___tracy_emit_zone_begin_alloc_callstack( uint64_t srcloc, int32_t depth, int32_t active );
+TRACY_API TracyCZoneCtx ___tracy_emit_zone_begin_frames( const struct ___tracy_source_location_data* srcloc, const uint64_t* frames, int32_t depth, int32_t active );
 TRACY_API void ___tracy_emit_zone_end( TracyCZoneCtx ctx );
 TRACY_API void ___tracy_emit_zone_text( TracyCZoneCtx ctx, const char* txt, size_t size );
 TRACY_API void ___tracy_emit_zone_text_fmt( TracyCZoneCtx ctx, const char* fmt, ... ) TRACY_ATTRIBUTE_FORMAT_PRINTF(2, 3);

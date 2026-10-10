@@ -1,8 +1,10 @@
+#include <atomic>
 #include "TracyDebug.hpp"
 #include "TracyStringHelpers.hpp"
 #include "TracySysTrace.hpp"
 #include "../common/TracyAssert.hpp"
 #include "../common/TracySystem.hpp"
+#include "../tracy/TracyC.h"
 
 #ifdef TRACY_HAS_SYSTEM_TRACING
 
@@ -19,15 +21,31 @@
 namespace tracy
 {
 
+static std::atomic<int32_t> s_samplingFrequency { 0 };
+static std::atomic<___tracy_sample_hook> s_sampleHook { nullptr };
+static std::atomic<void*> s_sampleHookUser { nullptr };
+
+static int SysTraceRunSampleHook( uint32_t thread, uint64_t* frames, int depth, int capacity, uint64_t link )
+{
+    const auto hook = s_sampleHook.load( std::memory_order_acquire );
+    if( !hook ) return depth;
+    const int hooked = hook( thread, frames, depth, capacity, link, s_sampleHookUser.load( std::memory_order_relaxed ) );
+    return hooked >= 0 && hooked <= capacity ? hooked : depth;
+}
+
 static int GetSamplingFrequency()
 {
-    int samplingHz = TRACY_SAMPLING_HZ;
-
-    auto env = GetEnvVar( "TRACY_SAMPLING_HZ" );
-    if( env )
+    int samplingHz = s_samplingFrequency.load( std::memory_order_relaxed );
+    if( samplingHz <= 0 )
     {
-        int val = atoi( env );
-        if( val > 0 ) samplingHz = val;
+        samplingHz = TRACY_SAMPLING_HZ;
+
+        auto env = GetEnvVar( "TRACY_SAMPLING_HZ" );
+        if( env )
+        {
+            int val = atoi( env );
+            if( val > 0 ) samplingHz = val;
+        }
     }
 
 #if defined _WIN32
@@ -147,9 +165,10 @@ void WINAPI EventRecordCallback( PEVENT_RECORD record )
                 const uint64_t sz = ( record->UserDataLength - 16 ) / 8;
                 if( sz > 0 )
                 {
-                    auto trace = (uint64_t*)tracy_malloc( ( 1 + sz ) * sizeof( uint64_t ) );
-                    memcpy( trace, &sz, sizeof( uint64_t ) );
+                    constexpr uint64_t HookSlack = 64;
+                    auto trace = (uint64_t*)tracy_malloc( ( 1 + sz + HookSlack ) * sizeof( uint64_t ) );
                     memcpy( trace+1, sw->stack, sizeof( uint64_t ) * sz );
+                    trace[0] = (uint64_t)SysTraceRunSampleHook( (uint32_t)sw->stackThread, trace+1, (int)sz, (int)( sz + HookSlack ), 0 );
                     TracyLfqPrepare( QueueType::CallstackSample );
                     MemWrite( &item->callstackSampleFat.time, int64_t( sw->eventTimeStamp ) );
                     MemWrite( &item->callstackSampleFat.thread, sw->stackThread );
@@ -1647,4 +1666,25 @@ void SysTraceGetExternalName( uint64_t thread, const char*& threadName, const ch
 
 #  endif
 
+#endif
+
+#ifdef TRACY_HAS_SYSTEM_TRACING
+extern "C" TRACY_API void ___tracy_set_sampling_frequency( int32_t hz )
+{
+    tracy::s_samplingFrequency.store( hz, std::memory_order_relaxed );
+}
+
+extern "C" TRACY_API void ___tracy_set_sample_hook( ___tracy_sample_hook hook, void* user )
+{
+    tracy::s_sampleHookUser.store( user, std::memory_order_relaxed );
+    tracy::s_sampleHook.store( hook, std::memory_order_release );
+}
+#else
+extern "C" TRACY_API void ___tracy_set_sampling_frequency( int32_t )
+{
+}
+
+extern "C" TRACY_API void ___tracy_set_sample_hook( ___tracy_sample_hook, void* )
+{
+}
 #endif

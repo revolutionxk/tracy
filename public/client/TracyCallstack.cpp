@@ -1,3 +1,4 @@
+#include <atomic>
 #include <limits>
 #include <new>
 #include <stdio.h>
@@ -11,6 +12,7 @@
 #include "../common/TracyAssert.hpp"
 #include "../common/TracyString.hpp"
 #include "../common/TracySystem.hpp"
+#include "../tracy/TracyC.h"
 
 
 #ifdef TRACY_HAS_CALLSTACK
@@ -594,6 +596,15 @@ bool ShouldResolveSymbolsOffline()
 }
 #endif // #ifdef TRACY_SYMBOL_OFFLINE_RESOLVE
 
+static std::atomic<___tracy_symbol_resolver> s_symbolResolver { nullptr };
+static std::atomic<void*> s_symbolResolverUser { nullptr };
+
+static bool ResolveSymbol( uint64_t ptr, ___tracy_resolved_symbol& symbol )
+{
+    const auto resolver = s_symbolResolver.load( std::memory_order_acquire );
+    return resolver && resolver( ptr, &symbol, s_symbolResolverUser.load( std::memory_order_relaxed ) ) != 0;
+}
+
 #if TRACY_HAS_CALLSTACK == 1
 
 constexpr size_t MaxCbTrace = 64;
@@ -871,6 +882,13 @@ const char* DecodeCallstackPtrFast( uint64_t ptr )
     if( s_shouldResolveSymbolsOffline ) return "[unresolved]";
 
     static char ret[MaxNameSize];
+
+    ___tracy_resolved_symbol resolved;
+    if( ResolveSymbol( ptr, resolved ) )
+    {
+        strzcpy( ret, resolved.name, sizeof( ret ) );
+        return ret;
+    }
     const auto proc = GetCurrentProcess();
 
     char buf[sizeof( SYMBOL_INFO ) + MaxNameSize];
@@ -957,6 +975,16 @@ CallstackSymbolData DecodeSymbolAddress( uint64_t ptr )
 {
     CallstackSymbolData sym;
 
+    ___tracy_resolved_symbol resolved;
+    if( ResolveSymbol( ptr, resolved ) )
+    {
+        sym.file = CopyString( resolved.file );
+        sym.line = resolved.line;
+        sym.needFree = true;
+        sym.symAddr = resolved.address;
+        return sym;
+    }
+
     if( s_shouldResolveSymbolsOffline )
     {
         sym.file = "[unknown]";
@@ -1004,6 +1032,18 @@ static CallstackEntryData MakeUnresolvedCallstackEntryData( uint64_t ptr, Module
 
 CallstackEntryData DecodeCallstackPtr( uint64_t ptr )
 {
+    ___tracy_resolved_symbol resolved;
+    if( ResolveSymbol( ptr, resolved ) )
+    {
+        InitAllocator();
+        cb_data[0].name = CopyStringFast( resolved.name );
+        cb_data[0].file = CopyStringFast( resolved.file );
+        cb_data[0].line = resolved.line;
+        cb_data[0].symAddr = resolved.address;
+        cb_data[0].symLen = resolved.size;
+        return { cb_data, 1, resolved.image };
+    }
+
 #ifdef TRACY_DBGHELP_LOCK
     DBGHELP_LOCK;
 #endif
@@ -1488,6 +1528,13 @@ const char* DecodeCallstackPtrFast( uint64_t ptr )
     if( s_externalPid != 0 && s_extImages ) return DecodeCallstackPtrFastExternal( ptr );
 #endif
 
+    ___tracy_resolved_symbol resolved;
+    if( ResolveSymbol( ptr, resolved ) )
+    {
+        strzcpy( ret, resolved.name, sizeof( ret ) );
+        return ret;
+    }
+
     auto vptr = (void*)ptr;
     const char* symname = nullptr;
 
@@ -1562,6 +1609,16 @@ CallstackSymbolData DecodeSymbolAddress( uint64_t ptr )
 #ifdef __linux__
     if( s_externalPid != 0 && s_extImages ) return DecodeSymbolAddressExternal( ptr );
 #endif
+
+    ___tracy_resolved_symbol resolved;
+    if( ResolveSymbol( ptr, resolved ) )
+    {
+        sym.file = CopyString( resolved.file );
+        sym.line = resolved.line;
+        sym.needFree = true;
+        sym.symAddr = resolved.address;
+        return sym;
+    }
 
     if( cb_bts )
     {
@@ -1647,8 +1704,10 @@ static int CallstackDataCb( void* /*data*/, uintptr_t pc, uintptr_t lowaddr, con
     }
 }
 
-static void CallstackErrorCb( void* /*data*/, const char* /*msg*/, int /*errnum*/ )
+static void CallstackErrorCb( void* data, const char* /*msg*/, int /*errnum*/ )
 {
+    if( data ) *(bool*)data = true;
+
     for( int i=0; i<cb_num; i++ )
     {
         tracy_free_fast( (void*)cb_data[i].name );
@@ -1804,6 +1863,17 @@ CallstackEntryData DecodeCallstackPtr( uint64_t ptr )
         if( s_externalPid != 0 && s_extImages ) return DecodeCallstackPtrExternal( ptr );
 #endif
 
+        ___tracy_resolved_symbol resolved;
+        if( ResolveSymbol( ptr, resolved ) )
+        {
+            cb_data[0].name = CopyStringFast( resolved.name );
+            cb_data[0].file = CopyStringFast( resolved.file );
+            cb_data[0].line = resolved.line;
+            cb_data[0].symAddr = resolved.address;
+            cb_data[0].symLen = resolved.size;
+            return { cb_data, 1, resolved.image };
+        }
+
         const char* imageName = nullptr;
         uint64_t imageBaseAddress = 0x0;
 
@@ -1831,7 +1901,18 @@ CallstackEntryData DecodeCallstackPtr( uint64_t ptr )
         else
         {
             cb_num = 0;
-            backtrace_pcinfo( cb_bts, ptr, CallstackDataCb, CallstackErrorCb, nullptr );
+            bool failed = false;
+            backtrace_pcinfo( cb_bts, ptr, CallstackDataCb, CallstackErrorCb, &failed );
+            if( failed )
+            {
+                for( int i=0; i<cb_num; i++ )
+                {
+                    tracy_free_fast( (void*)cb_data[i].name );
+                    tracy_free_fast( (void*)cb_data[i].file );
+                }
+                cb_num = 0;
+                CallstackDataCb( nullptr, (uintptr_t)ptr, 0, nullptr, 0, nullptr );
+            }
             TRACY_ASSERT( cb_num > 0 );
 
             backtrace_syminfo( cb_bts, ptr, SymInfoCallback, SymInfoError, nullptr );
@@ -1960,6 +2041,12 @@ CallstackEntryData DecodeCallstackPtr( uint64_t ptr )
 
 #endif
 
+}
+
+extern "C" TRACY_API void ___tracy_set_symbol_resolver( ___tracy_symbol_resolver resolver, void* user )
+{
+    tracy::s_symbolResolverUser.store( user, std::memory_order_relaxed );
+    tracy::s_symbolResolver.store( resolver, std::memory_order_release );
 }
 
 #endif
